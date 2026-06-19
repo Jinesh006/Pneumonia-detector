@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pneumonia Detection from Chest X-Rays</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --primary: #2563eb;
+    --bg: #f4f7fb;
+    --card-bg: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --danger: #dc2626;
+    --safe: #16a34a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 40px 20px;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; }
+  .card {
+    background: var(--card-bg);
+    border-radius: 14px;
+    padding: 28px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+  }
+  .upload-zone {
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .upload-zone:hover { border-color: var(--primary); background: #f8fafc; }
+  input[type=file] { display: none; }
+  button {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: 16px;
+    width: 100%;
+  }
+  button:disabled { background: #94a3b8; cursor: not-allowed; }
+  #preview { max-width: 100%; border-radius: 8px; margin-top: 16px; display: none; }
+  .result { display: none; text-align: center; }
+  .result.show { display: block; }
+  .badge {
+    display: inline-block;
+    padding: 8px 18px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin: 12px 0;
+  }
+  .badge.pneumonia { background: #fee2e2; color: var(--danger); }
+  .badge.normal { background: #dcfce7; color: var(--safe); }
+  .confidence { color: var(--muted); font-size: 0.95rem; }
+  .gradcam-img { max-width: 100%; border-radius: 10px; margin-top: 16px; }
+  .gradcam-label { font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
+  .disclaimer {
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 24px;
+  }
+  .error { color: var(--danger); text-align: center; margin-top: 12px; }
+  .loader {
+    display: none;
+    text-align: center;
+    color: var(--muted);
+    margin-top: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🫁 Pneumonia Detection from Chest X-Rays</h1>
+  <p class="subtitle">Upload a chest X-ray image to get an AI-powered prediction with Grad-CAM explainability.</p>
+
+  <div class="card">
+    <div class="upload-zone" id="uploadZone">
+      <p id="uploadText">📤 Click to select a chest X-ray image (JPG/PNG)</p>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+    <img id="preview" alt="preview">
+    <button id="predictBtn" disabled>Analyze X-Ray</button>
+    <div class="loader" id="loader">Analyzing image, please wait...</div>
+    <div class="error" id="errorMsg"></div>
+
+    <div class="result" id="result">
+      <div id="badge" class="badge"></div>
+      <div class="confidence" id="confidenceText"></div>
+      <img id="gradcamImg" class="gradcam-img" alt="Grad-CAM">
+      <div class="gradcam-label">🔥 Grad-CAM heatmap — red/yellow regions influenced the model's decision most</div>
+    </div>
+  </div>
+
+  <p class="disclaimer">⚠️ Educational/research project only. Not a substitute for professional medical diagnosis.</p>
+</div>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const uploadZone = document.getElementById('uploadZone');
+  const preview = document.getElementById('preview');
+  const predictBtn = document.getElementById('predictBtn');
+  const loader = document.getElementById('loader');
+  const result = document.getElementById('result');
+  const errorMsg = document.getElementById('errorMsg');
+  const badge = document.getElementById('badge');
+  const confidenceText = document.getElementById('confidenceText');
+  const gradcamImg = document.getElementById('gradcamImg');
+
+  let selectedFile = null;
+
+  uploadZone.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) {
+      selectedFile = fileInput.files[0];
+      preview.src = URL.createObjectURL(selectedFile);
+      preview.style.display = 'block';
+      predictBtn.disabled = false;
+      result.classList.remove('show');
+      errorMsg.textContent = '';
+    }
+  });
+
+  predictBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    loader.style.display = 'block';
+    predictBtn.disabled = true;
+    errorMsg.textContent = '';
+    result.classList.remove('show');
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const res = await fetch('/predict', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (data.error) {
+        errorMsg.textContent = data.error;
+      } else {
+        badge.textContent = data.label;
+        badge.className = 'badge ' + (data.label === 'PNEUMONIA' ? 'pneumonia' : 'normal');
+        confidenceText.textContent = `Confidence: ${data.confidence}%`;
+        gradcamImg.src = data.gradcam_image;
+        result.classList.add('show');
+      }
+    } catch (err) {
+      errorMsg.textContent = 'Something went wrong. Please try again.';
+    } finally {
+      loader.style.display = 'none';
+      predictBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
