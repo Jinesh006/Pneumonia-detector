@@ -1,3 +1,11 @@
+---
+title: Pneumonia Detector
+emoji: 🫁
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
 # 🫁 Pneumonia Detection from Chest X-Rays (AI/ML Major Project)
 
 An end-to-end deep learning web app that detects **Pneumonia** from chest X-ray images,
